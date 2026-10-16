@@ -14,6 +14,7 @@ jobs:
   build:
     name: Build Android APK
     runs-on: ubuntu-22.04
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
@@ -23,36 +24,38 @@ jobs:
         shell: bash
         run: |
           set -e
+
           ZIP_FILE="Volt_WebView_Project_GitHubActions.zip"
 
           if [ ! -f "$ZIP_FILE" ]; then
-            ZIP_FILE="$(find . -maxdepth 3 -type f -name '*.zip' | head -n 1)"
+            ZIP_FILE="$(find . -maxdepth 4 -type f -name '*.zip' | head -n 1)"
           fi
 
           if [ -z "$ZIP_FILE" ] || [ ! -f "$ZIP_FILE" ]; then
             echo "ERROR: ZIP project Volt tidak ditemukan."
-            echo "Pastikan ZIP di-upload ke repository."
             exit 1
           fi
 
           mkdir -p extracted
-          unzip -q "$ZIP_FILE" -d extracted
+          unzip -oq "$ZIP_FILE" -d extracted
 
-          echo "Isi folder hasil ekstrak:"
+          echo "PROJECT FILES:"
           find extracted -maxdepth 4 -type f | head -n 100
 
-          if find extracted -name gradlew -type f | grep -q .; then
-            PROJECT_DIR="$(dirname "$(find extracted -name gradlew -type f | head -n 1)")"
-          elif find extracted -name settings.gradle -o -name settings.gradle.kts | grep -q .; then
-            PROJECT_DIR="$(dirname "$(find extracted \( -name settings.gradle -o -name settings.gradle.kts \) -type f | head -n 1)")"
-          else
-            echo "ERROR: Project Android Gradle tidak ditemukan."
-            echo "ZIP harus berisi project Android, bukan hanya HTML/CSS/JS."
+          GRADLE_FILE="$(find extracted -type f \
+            \( -name settings.gradle -o -name settings.gradle.kts \) \
+            | head -n 1)"
+
+          if [ -z "$GRADLE_FILE" ]; then
+            echo "ERROR: File settings.gradle tidak ditemukan."
+            echo "Pastikan ZIP berisi project Android Gradle."
             exit 1
           fi
 
+          PROJECT_DIR="$(dirname "$GRADLE_FILE")"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Project ditemukan: $PROJECT_DIR"
+
+          echo "Project directory: $PROJECT_DIR"
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -60,15 +63,42 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK packages
+      - name: Locate Android SDK
         shell: bash
         run: |
           set -e
-          yes | sdkmanager --licenses || true
-          sdkmanager \
+
+          if [ -z "$ANDROID_HOME" ]; then
+            export ANDROID_HOME=/usr/local/lib/android/sdk
+          fi
+
+          if [ ! -d "$ANDROID_HOME" ]; then
+            echo "ERROR: Android SDK tidak ditemukan."
+            exit 1
+          fi
+
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+
+          echo "Android SDK: $ANDROID_HOME"
+          ls "$ANDROID_HOME"
+
+      - name: Install required SDK packages
+        shell: bash
+        run: |
+          set -e
+
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" \
+            -name sdkmanager -type f 2>/dev/null | head -n 1)"
+
+          if [ -z "$SDKMANAGER" ]; then
+            echo "ERROR: sdkmanager tidak ditemukan di SDK."
+            exit 1
+          fi
+
+          yes | "$SDKMANAGER" --licenses || true
+
+          "$SDKMANAGER" \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
@@ -79,28 +109,32 @@ jobs:
           set -e
           cd "$PROJECT_DIR"
 
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
+          if [ -f gradlew ]; then
+            chmod +x gradlew
             ./gradlew --no-daemon assembleDebug
           else
-            gradle --no-daemon assembleDebug
+            echo "ERROR: Gradle wrapper tidak ditemukan."
+            echo "Project harus menyertakan gradlew."
+            exit 1
           fi
 
       - name: Find generated APK
         id: apk
         shell: bash
         run: |
+          set -e
+
           APK_PATH="$(find "$PROJECT_DIR" -type f \
             -path '*/build/outputs/apk/*/*.apk' \
             | head -n 1)"
 
           if [ -z "$APK_PATH" ]; then
-            echo "ERROR: File APK tidak ditemukan."
+            echo "ERROR: APK tidak ditemukan."
             exit 1
           fi
 
           echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
-          echo "APK berhasil dibuat: $APK_PATH"
+          echo "APK ready: $APK_PATH"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
