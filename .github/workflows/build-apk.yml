@@ -4,42 +4,109 @@ name: Build Volt APK
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 permissions:
   contents: read
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: Build Android APK
+    runs-on: ubuntu-22.04
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Extract Volt project
+        shell: bash
         run: |
-          unzip -q Volt_WebView_Project_GitHubActions.zip -d extracted
-          echo "PROJECT_DIR=extracted/Volt_WebView_Project" >> "$GITHUB_ENV"
+          set -e
+          ZIP_FILE="Volt_WebView_Project_GitHubActions.zip"
 
-      - uses: actions/setup-java@v4
+          if [ ! -f "$ZIP_FILE" ]; then
+            ZIP_FILE="$(find . -maxdepth 3 -type f -name '*.zip' | head -n 1)"
+          fi
+
+          if [ -z "$ZIP_FILE" ] || [ ! -f "$ZIP_FILE" ]; then
+            echo "ERROR: ZIP project Volt tidak ditemukan."
+            echo "Pastikan ZIP di-upload ke repository."
+            exit 1
+          fi
+
+          mkdir -p extracted
+          unzip -q "$ZIP_FILE" -d extracted
+
+          echo "Isi folder hasil ekstrak:"
+          find extracted -maxdepth 4 -type f | head -n 100
+
+          if find extracted -name gradlew -type f | grep -q .; then
+            PROJECT_DIR="$(dirname "$(find extracted -name gradlew -type f | head -n 1)")"
+          elif find extracted -name settings.gradle -o -name settings.gradle.kts | grep -q .; then
+            PROJECT_DIR="$(dirname "$(find extracted \( -name settings.gradle -o -name settings.gradle.kts \) -type f | head -n 1)")"
+          else
+            echo "ERROR: Project Android Gradle tidak ditemukan."
+            echo "ZIP harus berisi project Android, bukan hanya HTML/CSS/JS."
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Project ditemukan: $PROJECT_DIR"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK
-        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -e
+          yes | sdkmanager --licenses || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set -e
+          cd "$PROJECT_DIR"
 
-      - name: Build APK
-        run: cd "$PROJECT_DIR" && gradle --no-daemon assembleDebug
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew --no-daemon assembleDebug
+          else
+            gradle --no-daemon assembleDebug
+          fi
 
-      - uses: actions/upload-artifact@v4
+      - name: Find generated APK
+        id: apk
+        shell: bash
+        run: |
+          APK_PATH="$(find "$PROJECT_DIR" -type f \
+            -path '*/build/outputs/apk/*/*.apk' \
+            | head -n 1)"
+
+          if [ -z "$APK_PATH" ]; then
+            echo "ERROR: File APK tidak ditemukan."
+            exit 1
+          fi
+
+          echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
+          echo "APK berhasil dibuat: $APK_PATH"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
         with:
           name: Volt-debug-apk
-          path: extracted/Volt_WebView_Project/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
+          retention-days: 7
           
