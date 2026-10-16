@@ -1,2 +1,0 @@
-# Sakaz-x
-Bug
