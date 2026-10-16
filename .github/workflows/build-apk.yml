@@ -14,7 +14,7 @@ jobs:
   build:
     name: Build Android APK
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
@@ -39,23 +39,20 @@ jobs:
           mkdir -p extracted
           unzip -oq "$ZIP_FILE" -d extracted
 
-          echo "PROJECT FILES:"
-          find extracted -maxdepth 4 -type f | head -n 100
-
-          GRADLE_FILE="$(find extracted -type f \
+          SETTINGS="$(find extracted -type f \
             \( -name settings.gradle -o -name settings.gradle.kts \) \
             | head -n 1)"
 
-          if [ -z "$GRADLE_FILE" ]; then
-            echo "ERROR: File settings.gradle tidak ditemukan."
-            echo "Pastikan ZIP berisi project Android Gradle."
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: Konfigurasi Android Gradle tidak ditemukan."
             exit 1
           fi
 
-          PROJECT_DIR="$(dirname "$GRADLE_FILE")"
+          PROJECT_DIR="$(dirname "$SETTINGS")"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-          echo "Project directory: $PROJECT_DIR"
+          echo "Project: $PROJECT_DIR"
+          ls -la "$PROJECT_DIR"
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -63,84 +60,36 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Locate Android SDK
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
         shell: bash
         run: |
           set -e
-
-          if [ -z "$ANDROID_HOME" ]; then
-            export ANDROID_HOME=/usr/local/lib/android/sdk
-          fi
-
-          if [ ! -d "$ANDROID_HOME" ]; then
-            echo "ERROR: Android SDK tidak ditemukan."
-            exit 1
-          fi
-
-          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
-
-          echo "Android SDK: $ANDROID_HOME"
-          ls "$ANDROID_HOME"
-
-      - name: Install required SDK packages
-        shell: bash
-        run: |
-          set -e
-
-          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" \
-            -name sdkmanager -type f 2>/dev/null | head -n 1)"
-
-          if [ -z "$SDKMANAGER" ]; then
-            echo "ERROR: sdkmanager tidak ditemukan di SDK."
-            exit 1
-          fi
-
-          yes | "$SDKMANAGER" --licenses || true
-
-          "$SDKMANAGER" \
+          yes | sdkmanager --licenses || true
+          sdkmanager \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
 
       - name: Build debug APK
         shell: bash
         run: |
           set -e
           cd "$PROJECT_DIR"
+          gradle --no-daemon assembleDebug
 
-          if [ -f gradlew ]; then
-            chmod +x gradlew
-            ./gradlew --no-daemon assembleDebug
-          else
-            echo "ERROR: Gradle wrapper tidak ditemukan."
-            echo "Project harus menyertakan gradlew."
-            exit 1
-          fi
-
-      - name: Find generated APK
-        id: apk
-        shell: bash
-        run: |
-          set -e
-
-          APK_PATH="$(find "$PROJECT_DIR" -type f \
-            -path '*/build/outputs/apk/*/*.apk' \
-            | head -n 1)"
-
-          if [ -z "$APK_PATH" ]; then
-            echo "ERROR: APK tidak ditemukan."
-            exit 1
-          fi
-
-          echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
-          echo "APK ready: $APK_PATH"
-
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Volt-debug-apk
-          path: ${{ steps.apk.outputs.path }}
+          path: extracted/**/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 7
           
